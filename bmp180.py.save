@@ -1,0 +1,109 @@
+# Distributed with a free-will license.
+# Use it any way you want, profit or free, provided it fits in the licenses of its associated works.
+# BMP180
+# This code is designed to work with the BMP180_I2CS I2C Mini Module available from ControlEverything.com.
+# https://www.controleverything.com/content/Pressure?sku=BMP180_I2CS#tabs-0-product_tabset-2
+
+import smbus
+import time
+import urllib
+import RPi.GPIO as GPIO ## Import GPIO librar
+
+GPIO.setmode(GPIO.BCM)
+GPIO.setwarnings(False)
+GPIO.setup(17,GPIO.OUT)
+
+
+
+# Get I2C bus
+bus = smbus.SMBus(1)
+
+
+while True:
+	timeout = time.time() + 60*5   # 5 minutes from now
+
+	GPIO.output(17,GPIO.LOW)
+	# BMP180 address, 0x77(119)
+	# Read data back from 0xAA(170), 22 bytes
+	data = bus.read_i2c_block_data(0x77, 0xAA, 22)
+
+	# Convert the data
+	AC1 = data[0] * 256 + data[1]
+	if AC1 > 32767 :
+		AC1 -= 65535
+	AC2 = data[2] * 256 + data[3]
+	if AC2 > 32767 :
+		AC2 -= 65535
+	AC3 = data[4] * 256 + data[5]
+	if AC3 > 32767 :
+		AC3 -= 65535
+	AC4 = data[6] * 256 + data[7]
+	AC5 = data[8] * 256 + data[9]
+	AC6 = data[10] * 256 + data[11]
+	B1 = data[12] * 256 + data[13]
+	if B1 > 32767 :
+		B1 -= 65535
+	B2 = data[14] * 256 + data[15]
+	if B2 > 32767 :
+		B2 -= 65535
+	MB = data[16] * 256 + data[17]
+	if MB > 32767 :
+		MB -= 65535
+	MC = data[18] * 256 + data[19]
+	if MC > 32767 :
+		MC -= 65535
+	MD = data[20] * 256 + data[21]
+	if MD > 32767 :
+		MD -= 65535
+
+	time.sleep(0.5)
+
+	# BMP180 address, 0x77(119)
+	# Select measurement control register, 0xF4(244)
+	#		0x2E(46)	Enable temperature measurement
+	bus.write_byte_data(0x77, 0xF4, 0x2E)
+
+	time.sleep(0.5)
+
+	# BMP180 address, 0x77(119)
+	# Read data back from 0xF6(246), 2 bytes
+	# temp MSB, temp LSB
+	data = bus.read_i2c_block_data(0x77, 0xF6, 2)
+
+	# Convert the data
+	temp = data[0] * 256 + data[1]
+
+
+	time.sleep(0.5)
+
+	# BMP180 address, 0x77(119)
+	# Read data back from 0xF6(246), 3 bytes
+	# pres MSB1, pres MSB, pres LSB
+	data = bus.read_i2c_block_data(0x77, 0xF6, 3)
+
+	# Convert the data
+	pres = ((data[0] * 65536) + (data[1] * 256) + data[2]) / 128
+
+	# Callibration for Temperature
+	X1 = (temp - AC6) * AC5 / 32768.0
+	X2 = (MC * 2048.0) / (X1 + MD)
+	B5 = X1 + X2
+	cTemp = ((B5 + 8.0) / 16.0) / 10.0
+	fTemp = cTemp * 1.8 + 32
+
+	print "Temperature in Celsius : %.2f C" %cTemp
+	print "Temperature in Fahrenheit : %.2f F" %fTemp
+
+	data = urllib.urlopen("https://api.thingspeak.com/update?api_key=ZU58=&field1=" + str(fTemp));
+	count = 0;
+
+	for x in range(5):
+		GPIO.output(17,GPIO.HIGH)
+        	time.sleep(.3)
+        	GPIO.output(17,GPIO.LOW)
+        	time.sleep(.3)
+	while time.time() < timeout:
+                GPIO.output(17,GPIO.HIGH)
+                time.sleep(4)
+                GPIO.output(17,GPIO.LOW)
+                time.sleep(4)
